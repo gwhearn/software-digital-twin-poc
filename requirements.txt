@@ -1,0 +1,9 @@
+networkx>=3.2
+GitPython>=3.1.40
+radon>=6.0.1
+matplotlib>=3.8
+plotly>=5.18
+pandas>=2.1
+streamlit>=1.29
+pyvis>=0.3.2
+tqdm>=4.66
