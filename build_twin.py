@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-Software Digital Twin PoC - Improved Version
-Now tracks internal modules + external packages + versions
+Software Digital Twin PoC - with package dependency support
+Tracks internal modules + external packages + their Requires-Dist
 """
 
 import ast
 import re
-import sys
 from pathlib import Path
 from collections import defaultdict
 import networkx as nx
@@ -19,12 +18,12 @@ from datetime import datetime
 from tqdm import tqdm
 
 try:
-    from importlib.metadata import version, PackageNotFoundError
+    from importlib.metadata import version, requires, PackageNotFoundError
 except ImportError:
-    from importlib_metadata import version, PackageNotFoundError
+    from importlib_metadata import version, requires, PackageNotFoundError
 
 # ================== CONFIG ==================
-REPO_PATH = Path(r"D:\AWX")  # <-- CHANGE THIS
+REPO_PATH = Path(r"D:\AWX\24.6.1\awx")  # <-- CHANGE THIS
 OUTPUT_DIR = Path("twin_output")
 IGNORE_DIRS = {
     ".git", ".venv", "venv", "node_modules", "__pycache__",
@@ -35,7 +34,7 @@ IGNORE_DIRS = {
 
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-# Common standard library modules (simplified list)
+# Common standard library modules
 STDLIB = {
     "os", "sys", "re", "json", "datetime", "pathlib", "collections", "itertools",
     "functools", "typing", "abc", "ast", "asyncio", "base64", "csv", "hashlib",
@@ -71,29 +70,25 @@ def extract_imports(file_path: Path) -> set[str]:
     return imports
 
 def parse_requirements(root: Path) -> dict:
-    """Parse requirements.txt and pyproject.toml for declared dependencies"""
+    """Parse requirements.txt and pyproject.toml"""
     deps = {}
 
-    # requirements.txt
     req_file = root / "requirements.txt"
     if req_file.exists():
         with open(req_file, encoding="utf-8", errors="ignore") as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#") and not line.startswith("-"):
-                    # Simple parsing: package==version or package>=version
                     match = re.match(r"([a-zA-Z0-9_-]+)\s*([=<>!~].+)?", line)
                     if match:
                         name = match.group(1).lower().replace("_", "-")
                         spec = match.group(2) or ""
                         deps[name] = spec.strip()
 
-    # pyproject.toml (very basic)
     pyproject = root / "pyproject.toml"
     if pyproject.exists():
         try:
             content = pyproject.read_text(encoding="utf-8", errors="ignore")
-            # Look for dependencies = [ ... ]
             matches = re.findall(r'["\']([a-zA-Z0-9_-]+)([=<>!~][^"\']*)?["\']', content)
             for name, spec in matches:
                 name = name.lower().replace("_", "-")
@@ -108,13 +103,27 @@ def get_installed_version(package_name: str) -> str:
     try:
         return version(package_name)
     except PackageNotFoundError:
-        # Try common variations
         for variant in [package_name, package_name.replace("-", "_"), package_name.replace("_", "-")]:
             try:
                 return version(variant)
             except PackageNotFoundError:
                 continue
         return "not installed"
+
+def get_package_requires(package_name: str) -> list[str]:
+    """Return the list of Requires-Dist for a package"""
+    try:
+        reqs = requires(package_name)
+        return reqs if reqs else []
+    except PackageNotFoundError:
+        # try common name variants
+        for variant in [package_name.replace("-", "_"), package_name.replace("_", "-")]:
+            try:
+                reqs = requires(variant)
+                return reqs if reqs else []
+            except PackageNotFoundError:
+                continue
+        return []
 
 def build_dependency_graph(root: Path) -> nx.DiGraph:
     G = nx.DiGraph()
@@ -140,21 +149,26 @@ def build_dependency_graph(root: Path) -> nx.DiGraph:
             else:
                 external_imports.add(imp)
 
-    # Add external packages as nodes
+    # Add external packages
     declared = parse_requirements(root)
     print(f"Found {len(external_imports)} external packages referenced in code")
 
-    for pkg in sorted(external_imports):
+    for pkg in tqdm(sorted(external_imports), desc="Processing external packages"):
         pkg_lower = pkg.lower().replace("_", "-")
         is_stdlib = pkg in STDLIB
+        
         declared_spec = declared.get(pkg_lower, declared.get(pkg, ""))
         installed_ver = "stdlib" if is_stdlib else get_installed_version(pkg)
+        
+        # Get the package's own dependencies
+        pkg_requires = [] if is_stdlib else get_package_requires(pkg)
 
         G.add_node(
             pkg,
             type="stdlib" if is_stdlib else "external",
             declared=declared_spec,
             installed_version=installed_ver,
+            requires=pkg_requires,          # <-- list of Requires-Dist
             file=None
         )
 

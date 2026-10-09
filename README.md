@@ -9,6 +9,12 @@ It analyzes your Python codebase and creates:
 - Git history insights (churn, authors, last change)
 - An interactive Streamlit dashboard
 
+## Screenshots (current version)
+
+![Dashboard overview](./Screenshot%202026-10-09%20101903.png)
+
+![Dashboard filters and metrics](./Screenshot%202026-10-09%20102133.png)
+
 ---
 
 ## Features (v1)

@@ -75,28 +75,31 @@ rows = []
 for node, data in G.nodes(data=True):
     node_type = data.get("type", "unknown")
 
-    # Filter: show only external/stdlib
     if show_only_external and node_type == "internal":
         continue
 
-    # Filter: complexity & churn (only apply to internal modules)
     if node_type == "internal":
         if data.get("max_complexity", 0) < min_complexity:
             continue
         if data.get("churn", 0) < min_churn:
             continue
 
-    # Search filter
     if search_term and search_term.lower() not in node.lower():
         continue
+
+    # Format the requires list nicely
+    requires_list = data.get("requires", [])
+    requires_str = ", ".join(requires_list[:6])  # show first 6
+    if len(requires_list) > 6:
+        requires_str += f"  (+{len(requires_list)-6} more)"
 
     rows.append({
         "Name": node,
         "Type": node_type,
         "Installed Version": data.get("installed_version", ""),
         "Declared Spec": data.get("declared", ""),
+        "Requires (dependencies)": requires_str,
         "Max Complexity": data.get("max_complexity", ""),
-        "Avg Complexity": data.get("avg_complexity", ""),
         "Churn": data.get("churn", ""),
         "LOC": data.get("loc", ""),
         "Authors": data.get("authors", ""),
